@@ -1,0 +1,8 @@
+# Compiled binaries
+edid_override
+edid_check
+*.o
+*.dSYM/
+
+# macOS
+.DS_Store
