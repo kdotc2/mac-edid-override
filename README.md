@@ -15,9 +15,9 @@ This tool does the same thing for free.
 - **Monitor:** Dell U4025QW (5120x2160 ultrawide)
 - **Mac:** MacBook Pro M1 Max
 - **macOS:** Tahoe 26 (macOS 26)
-- **Result:** 110Hz (up from 60Hz)
+- **Result:** 110Hz at native 5120x2160 (up from 60Hz)
 
-> **Note:** This has only been tested on the above configuration. It may work on other Apple Silicon Macs and external displays, but your mileage may vary. The included EDID is specifically tuned for the Dell U4025QW. See [Using with Other Monitors](#using-with-other-monitors) below.
+> **Note:** This has only been tested on the above configuration. It may work on other Apple Silicon Macs and external displays, but your mileage may vary. The included EDIDs are specifically tuned for the Dell U4025QW. See [Using with Other Monitors](#using-with-other-monitors) below.
 
 ## Requirements
 
@@ -41,7 +41,13 @@ cd mac-edid-override
 ./install.sh
 ```
 
-That's it. The EDID override will auto-apply on every login and after sleep/wake.
+This installs the default EDID (5120x2160 with 110Hz support). To install a specific EDID variant:
+
+```bash
+./install.sh edids/dell-u4025qw-3840x1620.bin
+```
+
+The EDID override will auto-apply on every login and after sleep/wake.
 
 > **Note:** Your screen will briefly flicker after install, on each login, and after waking from sleep — this is normal. The display is rebuilding its mode table with the new refresh rate timings.
 
@@ -63,6 +69,24 @@ Display 1 (ID=5) EXTERNAL: 600 modes, curMode=473
   Current: 5120x2160 @110.0Hz
   Refresh rates: 24 25 30 50 60 70 75 100 110 Hz
 ```
+
+## Available EDIDs
+
+| File | Resolution | Refresh Rates | Notes |
+|------|-----------|---------------|-------|
+| `edids/dell-u4025qw.bin` | 5120x2160 (native) | 30/60/100/110 Hz | Default. Full resolution with highest refresh rates. |
+| `edids/dell-u4025qw-3840x1620.bin` | 5120x2160 + 3840x1620 | 30/60/100/110 Hz | Adds 3840x1620 timing descriptors for the scaled mode. |
+
+### A Note on 3840x1620 Scaled Mode
+
+Many users prefer the 3840x1620 "More Space" scaling option for better UI sizing on the U4025QW. With the EDID override, this scaled mode gets **100Hz** (up from 60Hz).
+
+**110Hz is not available at 3840x1620** — this is a macOS limitation, not a hardware one. When you select 3840x1620 in Display settings, macOS still drives the panel at 5120x2160 internally and applies UI scaling. macOS restricts the refresh rate options available for scaled modes, capping at 100Hz regardless of what the EDID advertises.
+
+Your options:
+- **3840x1620 @ 100Hz** — best balance of UI scaling and refresh rate
+- **5120x2160 @ 110Hz** — maximum refresh rate at native resolution ("More Space" setting)
+- **BetterDisplay** — can create a real 3840x1620 output mode (not scaled) which may allow 110Hz
 
 ## How It Works
 
@@ -127,7 +151,7 @@ This removes the LaunchAgent, clears the EDID override, and deletes the installe
 
 ## Using with Other Monitors
 
-The included `edids/dell-u4025qw.bin` is specific to the Dell U4025QW. For other monitors, you'll need a custom EDID with appropriate timing parameters for your display's native resolution and desired refresh rate.
+The included EDIDs in `edids/` are specific to the Dell U4025QW. For other monitors, you'll need a custom EDID with appropriate timing parameters for your display's native resolution and desired refresh rate.
 
 To create a custom EDID:
 

@@ -110,6 +110,16 @@ static int doInject(const char *edidPath) {
 }
 
 static int doReset(void) {
+    // Stop the daemon first so it doesn't re-inject the EDID
+    int stopped = 0;
+    if (system("launchctl list com.edid-override >/dev/null 2>&1") == 0) {
+        printf("Stopping EDID override daemon...\n");
+        system("launchctl unload ~/Library/LaunchAgents/com.edid-override.plist 2>/dev/null");
+        stopped = 1;
+        // Give the daemon a moment to stop
+        usleep(500000);
+    }
+
     SetVEDIDFunc setVEDID = dlsym(g_iokit, "IOAVServiceSetVirtualEDIDMode");
     IOAVServiceRef avSvc = findExtAVService();
     if (!avSvc) {
@@ -119,6 +129,9 @@ static int doReset(void) {
     IOReturn r = setVEDID(avSvc, 0, NULL);
     if (r == 0) {
         printf("Virtual EDID override cleared.\n");
+        if (stopped) {
+            printf("Daemon stopped. Run install.sh again to re-enable.\n");
+        }
         return 0;
     } else {
         fprintf(stderr, "Reset failed: 0x%x\n", r);
