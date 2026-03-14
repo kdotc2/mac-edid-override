@@ -53,20 +53,9 @@ cp "$EDID_FILE" "$INSTALL_DIR/edid.bin"
 chmod +x "$INSTALL_DIR/edid_override" "$INSTALL_DIR/edid_check"
 echo "  Binaries installed to $INSTALL_DIR"
 
-# Install LaunchAgent
-echo "Setting up LaunchAgent..."
-if launchctl list com.edid-override &>/dev/null; then
-    launchctl unload "$LAUNCH_AGENT" 2>/dev/null || true
-fi
-
-sed "s|__HOME__|$HOME|g" "$SCRIPT_DIR/com.edid-override.plist" > "$LAUNCH_AGENT"
-launchctl load "$LAUNCH_AGENT"
-echo "  LaunchAgent installed (runs at login)"
-
-# Run injection now
-echo ""
-echo "Injecting EDID..."
-"$INSTALL_DIR/edid_override"
+# Enable daemon and inject EDID
+echo "Enabling EDID override..."
+"$INSTALL_DIR/edid_override" --enable
 
 echo ""
 echo "Checking display status..."
@@ -79,6 +68,8 @@ echo "The EDID override is now active and will auto-apply on login."
 echo "You should see high refresh rate options in System Settings > Displays."
 echo ""
 echo "Useful commands:"
-echo "  $INSTALL_DIR/edid_check       # Check current status"
-echo "  $INSTALL_DIR/edid_override --reset   # Remove override"
+echo "  $INSTALL_DIR/edid_check              # Check current status"
+echo "  $INSTALL_DIR/edid_override --reset   # Stop daemon and remove override"
+echo "  $INSTALL_DIR/edid_override           # Re-enable daemon and inject"
+echo "  $INSTALL_DIR/edid_override --enable  # Explicit alias for the same action"
 echo "  ./uninstall.sh                       # Full uninstall"

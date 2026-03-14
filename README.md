@@ -79,13 +79,13 @@ Display 1 (ID=5) EXTERNAL: 600 modes, curMode=473
 
 ### A Note on 3840x1620 Scaled Mode
 
-Many users prefer the 3840x1620 "More Space" scaling option for better UI sizing on the U4025QW. With the EDID override, this scaled mode gets **100Hz** (up from 60Hz).
+Many users prefer the 3840x1620 "Default" scaling option for better UI sizing on the U4025QW. With the EDID override, this scaled mode gets **100Hz** (up from 60Hz).
 
 **110Hz is not available at 3840x1620** — this is a macOS limitation, not a hardware one. When you select 3840x1620 in Display settings, macOS still drives the panel at 5120x2160 internally and applies UI scaling. macOS restricts the refresh rate options available for scaled modes, capping at 100Hz regardless of what the EDID advertises.
 
 Your options:
 - **3840x1620 @ 100Hz** — best balance of UI scaling and refresh rate
-- **5120x2160 @ 110Hz** — maximum refresh rate at native resolution ("More Space" setting)
+- **5120x2160 @ 110Hz** — maximum refresh rate at native resolution (labelled "More Space" in Display settings)
 - **BetterDisplay** — can create a real 3840x1620 output mode (not scaled) which may allow 110Hz
 
 ## How It Works
@@ -103,14 +103,17 @@ The modified EDID adds DisplayID Type I Detailed Timing descriptors for 100Hz an
 # Check current display status
 ~/.config/edid-override/edid_check
 
-# Manually inject EDID
+# Inject EDID and re-enable the daemon if needed
 ~/.config/edid-override/edid_override
 
 # Inject a specific EDID file
 ~/.config/edid-override/edid_override /path/to/custom_edid.bin
 
-# Clear the EDID override (revert to factory)
+# Stop daemon and clear the EDID override (revert to factory)
 ~/.config/edid-override/edid_override --reset
+
+# Explicitly re-enable daemon and inject EDID (alias for the no-arg command)
+~/.config/edid-override/edid_override --enable
 
 # Check if override is active
 ~/.config/edid-override/edid_override --status
@@ -134,8 +137,9 @@ This removes the LaunchAgent, clears the EDID override, and deletes the installe
 - If no new refresh rates appear, the EDID timings may not be compatible with your GPU. Check `edid_check` output for mode count — it should jump from ~396 to ~600 modes
 
 **Display goes black or looks wrong**
-- Run `~/.config/edid-override/edid_override --reset` to clear the override
+- Run `~/.config/edid-override/edid_override --reset` to stop the daemon and clear the override
 - Or replug your display cable to reset to factory EDID
+- To re-enable later: `~/.config/edid-override/edid_override`
 
 **Screen flickers on login or after waking from sleep**
 - This is normal. The EDID injection causes the display to rebuild its mode table, which triggers a brief flicker. It only lasts a second or two. The daemon automatically re-injects the EDID after sleep/wake.

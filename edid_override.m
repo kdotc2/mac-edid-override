@@ -2,10 +2,11 @@
 // Build: clang -fmodules -framework Foundation -framework CoreGraphics -framework IOKit -framework AppKit -o edid_override edid_override.m
 //
 // Usage:
-//   ./edid_override                     # Inject EDID and exit
+//   ./edid_override                     # Inject EDID and re-enable the daemon if needed
 //   ./edid_override --daemon            # Run as daemon, re-inject on display wake/reconnect
 //   ./edid_override /path/to/edid.bin   # Inject EDID from specified path
-//   ./edid_override --reset             # Clear virtual EDID override
+//   ./edid_override --reset             # Stop daemon and clear virtual EDID override
+//   ./edid_override --enable            # Re-enable daemon and inject EDID
 //   ./edid_override --status            # Show current EDID status
 //
 @import Foundation;
@@ -13,6 +14,7 @@
 @import AppKit;
 #include <IOKit/IOKitLib.h>
 #include <dlfcn.h>
+#include <mach-o/dyld.h>
 
 typedef CFTypeRef IOAVServiceRef;
 typedef IOAVServiceRef (*CreateFunc)(CFAllocatorRef, io_service_t);
@@ -21,6 +23,117 @@ typedef IOReturn (*CopyEDIDFunc)(IOAVServiceRef, CFDataRef *);
 
 static void *g_iokit = NULL;
 static NSString *g_edidPath = nil;
+
+static NSString *launchAgentPath(void) {
+    return [NSHomeDirectory() stringByAppendingPathComponent:@"Library/LaunchAgents/com.edid-override.plist"];
+}
+
+static NSString *installDir(void) {
+    return [NSHomeDirectory() stringByAppendingPathComponent:@".config/edid-override"];
+}
+
+static NSString *installedBinaryPath(void) {
+    return [installDir() stringByAppendingPathComponent:@"edid_override"];
+}
+
+static NSString *installedEDIDPath(void) {
+    return [installDir() stringByAppendingPathComponent:@"edid.bin"];
+}
+
+static NSString *currentExecutablePath(void) {
+    uint32_t size = 0;
+    _NSGetExecutablePath(NULL, &size);
+    if (size == 0) {
+        return nil;
+    }
+
+    char *buffer = malloc(size);
+    if (!buffer) {
+        return nil;
+    }
+
+    NSString *result = nil;
+    if (_NSGetExecutablePath(buffer, &size) == 0) {
+        result = [[[NSFileManager defaultManager] stringWithFileSystemRepresentation:buffer length:strlen(buffer)] stringByResolvingSymlinksInPath];
+    }
+    free(buffer);
+    return result;
+}
+
+static BOOL isInstalledBinaryInvocation(void) {
+    NSString *exePath = currentExecutablePath();
+    if (!exePath) {
+        return NO;
+    }
+    return [exePath isEqualToString:[installedBinaryPath() stringByResolvingSymlinksInPath]];
+}
+
+static NSString *launchAgentPlistContent(void) {
+    return [NSString stringWithFormat:
+        @"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
+        "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+        "<plist version=\"1.0\">\n"
+        "<dict>\n"
+        "    <key>Label</key>\n"
+        "    <string>com.edid-override</string>\n"
+        "    <key>ProgramArguments</key>\n"
+        "    <array>\n"
+        "        <string>%@</string>\n"
+        "        <string>--daemon</string>\n"
+        "    </array>\n"
+        "    <key>RunAtLoad</key>\n"
+        "    <true/>\n"
+        "    <key>KeepAlive</key>\n"
+        "    <true/>\n"
+        "    <key>StandardOutPath</key>\n"
+        "    <string>/tmp/edid-override.log</string>\n"
+        "    <key>StandardErrorPath</key>\n"
+        "    <string>/tmp/edid-override.log</string>\n"
+        "</dict>\n"
+        "</plist>\n", installedBinaryPath()];
+}
+
+static int ensureLaunchAgentEnabled(void) {
+    NSString *binaryPath = installedBinaryPath();
+    NSString *plistPath = launchAgentPath();
+    NSString *plistContent = launchAgentPlistContent();
+    NSFileManager *fm = [NSFileManager defaultManager];
+
+    if (![fm fileExistsAtPath:binaryPath]) {
+        fprintf(stderr, "edid_override not found at %s\n", binaryPath.UTF8String);
+        fprintf(stderr, "Run install.sh first to compile and install.\n");
+        return 1;
+    }
+
+    NSString *existing = [NSString stringWithContentsOfFile:plistPath encoding:NSUTF8StringEncoding error:nil];
+    if (![existing isEqualToString:plistContent]) {
+        NSString *launchAgentsDir = [plistPath stringByDeletingLastPathComponent];
+        [fm createDirectoryAtPath:launchAgentsDir
+      withIntermediateDirectories:YES
+                       attributes:nil
+                            error:nil];
+
+        NSError *writeError = nil;
+        [plistContent writeToFile:plistPath atomically:YES encoding:NSUTF8StringEncoding error:&writeError];
+        if (writeError) {
+            fprintf(stderr, "Failed to write LaunchAgent: %s\n", writeError.localizedDescription.UTF8String);
+            return 1;
+        }
+    }
+
+    if (system("launchctl list com.edid-override >/dev/null 2>&1") != 0) {
+        NSString *loadCmd = [NSString stringWithFormat:@"launchctl load '%@'", plistPath];
+        if (system(loadCmd.UTF8String) != 0) {
+            fprintf(stderr, "Failed to load LaunchAgent.\n");
+            return 1;
+        }
+        printf("LaunchAgent installed and loaded.\n");
+        printf("EDID override daemon will start automatically.\n");
+    }
+
+    return 0;
+}
 
 static IOAVServiceRef findExtAVService(void) {
     CreateFunc pCreate = dlsym(g_iokit, "IOAVServiceCreateWithService");
@@ -111,12 +224,13 @@ static int doInject(const char *edidPath) {
 
 static int doReset(void) {
     // Stop the daemon first so it doesn't re-inject the EDID
+    NSString *plistPath = launchAgentPath();
     int stopped = 0;
-    if (system("launchctl list com.edid-override >/dev/null 2>&1") == 0) {
+    if ([[NSFileManager defaultManager] fileExistsAtPath:plistPath]) {
         printf("Stopping EDID override daemon...\n");
-        system("launchctl unload ~/Library/LaunchAgents/com.edid-override.plist 2>/dev/null");
+        NSString *cmd = [NSString stringWithFormat:@"launchctl unload '%@' 2>/dev/null", plistPath];
+        system(cmd.UTF8String);
         stopped = 1;
-        // Give the daemon a moment to stop
         usleep(500000);
     }
 
@@ -130,13 +244,20 @@ static int doReset(void) {
     if (r == 0) {
         printf("Virtual EDID override cleared.\n");
         if (stopped) {
-            printf("Daemon stopped. Run install.sh again to re-enable.\n");
+            printf("To re-enable, run: %s/edid_override\n", installDir().UTF8String);
         }
         return 0;
     } else {
         fprintf(stderr, "Reset failed: 0x%x\n", r);
         return 1;
     }
+}
+
+static int doEnable(void) {
+    if (ensureLaunchAgentEnabled() != 0) {
+        return 1;
+    }
+    return doInject(installedEDIDPath().UTF8String);
 }
 
 static int doStatus(void) {
@@ -273,6 +394,7 @@ int main(int argc, const char *argv[]) {
 
         if (argc > 1) {
             if (strcmp(argv[1], "--reset") == 0) return doReset();
+            if (strcmp(argv[1], "--enable") == 0) return doEnable();
             if (strcmp(argv[1], "--status") == 0) return doStatus();
             if (strcmp(argv[1], "--daemon") == 0) {
                 const char *path = (argc > 2) ? argv[2] : "~/.config/edid-override/edid.bin";
@@ -281,6 +403,9 @@ int main(int argc, const char *argv[]) {
             return doInject(argv[1]);
         }
 
+        if (isInstalledBinaryInvocation()) {
+            return doEnable();
+        }
         return doInject("~/.config/edid-override/edid.bin");
     }
 }
