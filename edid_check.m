@@ -108,6 +108,7 @@ int main(int argc, const char *argv[]) {
                         } else {
                             printf("  External EDID: read failed (0x%x)\n", r);
                         }
+                        CFRelease(avSvc);
                     }
                 }
                 CFRelease(props);
