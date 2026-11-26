@@ -244,6 +244,7 @@ static int doReset(void) {
         return 1;
     }
     IOReturn r = setVEDID(avSvc, 0, NULL);
+    CFRelease(avSvc);
     if (r == 0) {
         printf("Virtual EDID override cleared.\n");
         if (stopped) {
@@ -286,8 +287,10 @@ static int doStatus(void) {
         CFRelease(edid);
     } else {
         fprintf(stderr, "Cannot read EDID: 0x%x\n", r);
+        CFRelease(avSvc);
         return 1;
     }
+    CFRelease(avSvc);
     return 0;
 }
 
