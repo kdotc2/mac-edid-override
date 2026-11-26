@@ -187,6 +187,7 @@ static int doInject(const char *edidPath) {
             printf("EDID already active, skipping.\n");
             CFRelease(current);
             CFRelease(edidCF);
+            CFRelease(avSvc);
             return 0;
         }
         CFRelease(current);
@@ -201,6 +202,7 @@ static int doInject(const char *edidPath) {
     if (r != 0) {
         fprintf(stderr, "Injection failed: 0x%x\n", r);
         CFRelease(edidCF);
+        CFRelease(avSvc);
         return 1;
     }
     printf("EDID injected successfully.\n");
@@ -219,6 +221,7 @@ static int doInject(const char *edidPath) {
     }
 
     CFRelease(edidCF);
+    CFRelease(avSvc);
     return 0;
 }
 
@@ -379,6 +382,7 @@ static int doDaemon(const char *edidPath) {
                 }
                 CFRelease(current);
             }
+            CFRelease(avSvc);
         }
     });
     dispatch_resume(timer);
